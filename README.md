@@ -8,5 +8,6 @@ Goals:
 - Support long-running, reproducible research workflows
 
 Status: Step 0 provides a CLI skeleton, logging stub, tests, and CI.
+Status: Step 1 adds an idempotent SQLite schema and init-db command.
 
 Disclaimer: This tool is for research and education only.

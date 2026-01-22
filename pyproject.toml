@@ -23,8 +23,9 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 market-drip = "market_drip.cli:main"
 
-[tool.setuptools]
-packages = ["market_drip"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["market_drip*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
