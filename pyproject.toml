@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-drip"
+version = "0.0.0"
+description = "Research-oriented, low-frequency data ingestion for prediction markets."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "UNLICENSED" }
+authors = [{ name = "market-drip contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: Other/Proprietary License",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+market-drip = "market_drip.cli:main"
+
+[tool.setuptools]
+packages = ["market_drip"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
