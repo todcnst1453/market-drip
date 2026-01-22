@@ -19,7 +19,6 @@ def test_cli_help() -> None:
 
 def test_cli_subcommands_exist() -> None:
     commands = [
-        "run",
         "status",
         "db-checkpoint",
         "db-vacuum",
@@ -60,6 +59,28 @@ def test_cli_subcommands_exist() -> None:
         )
         assert result.returncode == 0
         assert "Build tasks complete" in result.stdout
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "market_drip",
+                "run",
+                "--db",
+                f"{tmp_dir}/test.sqlite",
+                "--now-ts",
+                "1700000000",
+                "--max-tasks",
+                "1",
+                "--no-sleep",
+                "--no-jitter",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert "Run worker complete" in result.stdout
 
     for command in commands:
         result = subprocess.run(

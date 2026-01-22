@@ -10,6 +10,7 @@ from typing import Callable, Sequence
 from .db.db import init_db
 from .sync import sync_markets
 from .tasks.build_tasks import build_tasks
+from .worker.run_worker import run_worker
 
 
 def _not_implemented(_: argparse.Namespace) -> int:
@@ -50,6 +51,27 @@ def _build_tasks(args: argparse.Namespace) -> int:
             total=stats.total_inserted,
             m15=stats.inserted_15m,
             m1=stats.inserted_1m,
+        )
+    )
+    return 0
+
+
+def _run_worker(args: argparse.Namespace) -> int:
+    now_ts = args.now_ts if args.now_ts is not None else int(time.time())
+    stats = run_worker(
+        db_path=args.db,
+        now_ts=now_ts,
+        max_tasks=args.max_tasks,
+        no_sleep=args.no_sleep,
+        no_jitter=args.no_jitter,
+    )
+    print(
+        "Run worker complete: processed={processed}, done={done}, deferred={deferred}, error={error}, prices={prices}".format(
+            processed=stats["tasks_processed"],
+            done=stats["tasks_done"],
+            deferred=stats["tasks_deferred"],
+            error=stats["tasks_error"],
+            prices=stats["prices_inserted"],
         )
     )
     return 0
@@ -117,7 +139,18 @@ def build_parser() -> argparse.ArgumentParser:
         _build_tasks,
         _build_tasks_args,
     )
-    _add_subcommand(subparsers, "run", "Run the worker", _not_implemented)
+    def _run_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+        p.add_argument("--now-ts", type=int, default=None, help="Override current epoch seconds")
+        p.add_argument("--max-tasks", type=int, default=None, help="Limit number of tasks")
+        p.add_argument("--no-sleep", action="store_true", help="Disable inter-task sleep")
+        p.add_argument("--no-jitter", action="store_true", help="Disable jitter for backoff and sleep")
+
+    _add_subcommand(subparsers, "run", "Run the worker", _run_worker, _run_args)
     _add_subcommand(subparsers, "status", "Show status", _not_implemented)
     _add_subcommand(subparsers, "db-checkpoint", "Checkpoint the database", _not_implemented)
     _add_subcommand(subparsers, "db-vacuum", "Vacuum the database", _not_implemented)
