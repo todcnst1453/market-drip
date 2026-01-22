@@ -19,8 +19,6 @@ def test_cli_help() -> None:
 
 def test_cli_subcommands_exist() -> None:
     commands = [
-        "db-checkpoint",
-        "db-vacuum",
         "export",
     ]
 
@@ -106,3 +104,21 @@ def test_cli_subcommands_exist() -> None:
         )
         assert result.returncode == 0
         assert "Not implemented yet" in result.stdout
+
+    result = subprocess.run(
+        [sys.executable, "-m", "market_drip", "db-checkpoint"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "WAL checkpoint" in result.stdout
+
+    result = subprocess.run(
+        [sys.executable, "-m", "market_drip", "db-vacuum"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "VACUUM" in result.stdout

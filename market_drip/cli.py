@@ -12,6 +12,7 @@ from .sync import sync_markets
 from .tasks.build_tasks import build_tasks
 from .worker.run_worker import run_worker
 from .status import get_status
+from .db.maintenance import wal_checkpoint, vacuum
 
 
 def _not_implemented(_: argparse.Namespace) -> int:
@@ -108,6 +109,18 @@ def _status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _db_checkpoint(args: argparse.Namespace) -> int:
+    result = wal_checkpoint(args.db)
+    print("WAL checkpoint complete: mode={mode} result={result}".format(**result))
+    return 0
+
+
+def _db_vacuum(args: argparse.Namespace) -> int:
+    vacuum(args.db)
+    print("VACUUM complete")
+    return 0
+
+
 def _add_subcommand(
     subparsers: argparse._SubParsersAction,
     name: str,
@@ -190,8 +203,15 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
     _add_subcommand(subparsers, "status", "Show status", _status, _status_args)
-    _add_subcommand(subparsers, "db-checkpoint", "Checkpoint the database", _not_implemented)
-    _add_subcommand(subparsers, "db-vacuum", "Vacuum the database", _not_implemented)
+    def _db_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+
+    _add_subcommand(subparsers, "db-checkpoint", "Checkpoint the database", _db_checkpoint, _db_args)
+    _add_subcommand(subparsers, "db-vacuum", "Vacuum the database", _db_vacuum, _db_args)
     _add_subcommand(subparsers, "export", "Export data", _not_implemented)
 
     return parser
