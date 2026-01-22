@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .db.db import init_db
+from .sync import sync_markets
 
 
 def _not_implemented(_: argparse.Namespace) -> int:
@@ -17,6 +18,17 @@ def _not_implemented(_: argparse.Namespace) -> int:
 def _init_db(args: argparse.Namespace) -> int:
     init_db(args.db)
     print(f"Initialized database at {args.db}")
+    return 0
+
+
+def _sync_markets(args: argparse.Namespace) -> int:
+    sync_markets(
+        db_path=args.db,
+        now_ts=args.now_ts,
+        limit=args.limit,
+        max_pages=args.max_pages,
+    )
+    print(f"Synced markets into {args.db}")
     return 0
 
 
@@ -45,7 +57,23 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
     _add_subcommand(subparsers, "init-db", "Initialize the database", _init_db, _init_db_args)
-    _add_subcommand(subparsers, "sync-markets", "Sync market metadata", _not_implemented)
+    def _sync_markets_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+        p.add_argument("--now-ts", type=int, default=None, help="Override current epoch seconds")
+        p.add_argument("--limit", type=int, default=100, help="Page size for Gamma API")
+        p.add_argument("--max-pages", type=int, default=None, help="Limit number of pages")
+
+    _add_subcommand(
+        subparsers,
+        "sync-markets",
+        "Sync market metadata",
+        _sync_markets,
+        _sync_markets_args,
+    )
     _add_subcommand(subparsers, "build-tasks", "Build ingestion tasks", _not_implemented)
     _add_subcommand(subparsers, "run", "Run the worker", _not_implemented)
     _add_subcommand(subparsers, "status", "Show status", _not_implemented)

@@ -19,7 +19,6 @@ def test_cli_help() -> None:
 
 def test_cli_subcommands_exist() -> None:
     commands = [
-        "sync-markets",
         "build-tasks",
         "run",
         "status",
