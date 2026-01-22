@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 import time
 from dataclasses import dataclass
@@ -50,6 +51,29 @@ def _recover_stale_running(conn, now_ts: int) -> None:
         """,
         (now_ts, now_ts, now_ts - STALE_RUNNING_SECONDS),
     )
+
+
+def _set_run_state(conn, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO run_state (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """,
+        (key, value),
+    )
+
+
+def _update_heartbeat(conn, now_ts: int, stats: WorkerStats) -> None:
+    _set_run_state(conn, "heartbeat_ts", str(now_ts))
+    _set_run_state(conn, "last_run_now_ts", str(now_ts))
+    stats_payload = {
+        "tasks_processed": stats.tasks_processed,
+        "tasks_done": stats.tasks_done,
+        "tasks_deferred": stats.tasks_deferred,
+        "tasks_error": stats.tasks_error,
+        "prices_inserted": stats.prices_inserted,
+    }
+    _set_run_state(conn, "last_worker_stats", json.dumps(stats_payload, separators=(",", ":")))
 
 
 def _select_next_task(conn, now_ts: int) -> dict[str, Any] | None:
@@ -159,12 +183,14 @@ def run_worker(
     try:
         with conn:
             _recover_stale_running(conn, now_ts)
+            _update_heartbeat(conn, now_ts, stats)
 
         while True:
             if max_tasks is not None and stats.tasks_processed >= max_tasks:
                 break
 
             with conn:
+                _update_heartbeat(conn, now_ts, stats)
                 task = _select_next_task(conn, now_ts)
                 if task is None:
                     break
@@ -201,6 +227,8 @@ def run_worker(
                     stats.tasks_error,
                     stats.prices_inserted + inserted,
                 )
+                with conn:
+                    _update_heartbeat(conn, now_ts, stats)
             except HttpError as exc:
                 attempts = int(task["attempts"]) + 1
                 if exc.status_code == 429:
@@ -217,6 +245,8 @@ def run_worker(
                         stats.tasks_error,
                         stats.prices_inserted,
                     )
+                    with conn:
+                        _update_heartbeat(conn, now_ts, stats)
                 elif exc.retriable:
                     next_run_at = now_ts + _compute_backoff_seconds(attempts, no_jitter)
                     with conn:
@@ -228,6 +258,8 @@ def run_worker(
                         stats.tasks_error,
                         stats.prices_inserted,
                     )
+                    with conn:
+                        _update_heartbeat(conn, now_ts, stats)
                 else:
                     with conn:
                         _mark_error(conn, task["task_pk"], now_ts, attempts, str(exc))
@@ -238,6 +270,8 @@ def run_worker(
                         stats.tasks_error + 1,
                         stats.prices_inserted,
                     )
+                    with conn:
+                        _update_heartbeat(conn, now_ts, stats)
             _sleep_between_tasks(no_sleep, no_jitter)
     finally:
         conn.close()

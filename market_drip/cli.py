@@ -11,6 +11,7 @@ from .db.db import init_db
 from .sync import sync_markets
 from .tasks.build_tasks import build_tasks
 from .worker.run_worker import run_worker
+from .status import get_status
 
 
 def _not_implemented(_: argparse.Namespace) -> int:
@@ -74,6 +75,36 @@ def _run_worker(args: argparse.Namespace) -> int:
             prices=stats["prices_inserted"],
         )
     )
+    return 0
+
+
+def _status(args: argparse.Namespace) -> int:
+    status = get_status(args.db)
+    print(f"db_path: {status['db_path']}")
+    print(f"db_size_bytes: {status['db_size_bytes']}")
+    print(
+        "counts: markets={m} tokens={t} prices={p}".format(
+            m=status["counts"]["markets"],
+            t=status["counts"]["tokens"],
+            p=status["counts"]["prices"],
+        )
+    )
+    print(
+        "tasks: pending={p} running={r} deferred={d} done={dn} error={e}".format(
+            p=status["tasks"]["pending"],
+            r=status["tasks"]["running"],
+            d=status["tasks"]["deferred"],
+            dn=status["tasks"]["done"],
+            e=status["tasks"]["error"],
+        )
+    )
+    print(f"heartbeat_ts: {status['heartbeat_ts']}")
+    if status["recent_errors"]:
+        print("recent_errors:")
+        for item in status["recent_errors"]:
+            print("  - {count} x {message}".format(count=item["count"], message=item["message"]))
+    else:
+        print("recent_errors: none")
     return 0
 
 
@@ -151,7 +182,14 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--no-jitter", action="store_true", help="Disable jitter for backoff and sleep")
 
     _add_subcommand(subparsers, "run", "Run the worker", _run_worker, _run_args)
-    _add_subcommand(subparsers, "status", "Show status", _not_implemented)
+    def _status_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+
+    _add_subcommand(subparsers, "status", "Show status", _status, _status_args)
     _add_subcommand(subparsers, "db-checkpoint", "Checkpoint the database", _not_implemented)
     _add_subcommand(subparsers, "db-vacuum", "Vacuum the database", _not_implemented)
     _add_subcommand(subparsers, "export", "Export data", _not_implemented)
