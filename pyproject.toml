@@ -15,10 +15,10 @@ classifiers = [
     "License :: Other/Proprietary License",
 ]
 
-dependencies = []
+dependencies = ["httpx>=0.25"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "pytest-httpx>=0.29"]
 
 [project.scripts]
 market-drip = "market_drip.cli:main"

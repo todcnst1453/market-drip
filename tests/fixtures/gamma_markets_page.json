@@ -1,0 +1,26 @@
+{
+  "markets": [
+    {
+      "id": "m-1",
+      "slug": "will-it-rain-tomorrow",
+      "question": "Will it rain tomorrow?",
+      "status": "active",
+      "end_ts": 1700000000,
+      "outcomes": [
+        {"name": "Yes", "clobTokenId": "t-yes"},
+        {"name": "No", "clobTokenId": "t-no"}
+      ]
+    },
+    {
+      "id": "m-2",
+      "slug": "btc-above-50k",
+      "question": "Will BTC be above 50000?",
+      "status": "closed",
+      "end_ts": 1700001000,
+      "outcomes": [
+        {"name": "Yes", "clobTokenId": "t-yes-2"},
+        {"name": "No", "clobTokenId": "t-no-2"}
+      ]
+    }
+  ]
+}
