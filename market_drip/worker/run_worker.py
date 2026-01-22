@@ -11,9 +11,11 @@ from typing import Any
 from ..clients.clob import ClobClient
 from ..clients.http import HttpError
 from ..db.db import connect
+from ..utils.progress import format_duration
 
 STALE_RUNNING_SECONDS = 60 * 60
 BASE_DELAY_SECONDS = 3.0
+HEARTBEAT_INTERVAL_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,16 @@ def _recover_stale_running(conn, now_ts: int) -> None:
         """,
         (now_ts, now_ts, now_ts - STALE_RUNNING_SECONDS),
     )
+
+
+def _task_status_counts(conn) -> dict[str, int]:
+    counts = {"pending": 0, "running": 0, "deferred": 0}
+    rows = conn.execute(
+        "SELECT status, COUNT(*) FROM fetch_tasks WHERE status IN ('pending','running','deferred') GROUP BY status"
+    ).fetchall()
+    for status, count in rows:
+        counts[status] = int(count)
+    return counts
 
 
 def _set_run_state(conn, key: str, value: str) -> None:
@@ -178,12 +190,35 @@ def run_worker(
 ) -> dict[str, int]:
     stats = WorkerStats(0, 0, 0, 0, 0)
     clob = ClobClient()
+    start_time = time.time()
+    last_heartbeat = 0.0
+
+    print(
+        "[worker] start db={db} poll_interval={poll:.1f}s max_backoff={backoff}s".format(
+            db=db_path,
+            poll=BASE_DELAY_SECONDS,
+            backoff=600,
+        )
+    )
 
     conn = connect(db_path)
     try:
         with conn:
             _recover_stale_running(conn, now_ts)
             _update_heartbeat(conn, now_ts, stats)
+        last_heartbeat = start_time
+        with conn:
+            counts = _task_status_counts(conn)
+        print(
+            "[worker] heartbeat uptime={uptime} done={done} pending={pending} running={running} deferred={deferred} rate={rate:.2f}task/min".format(
+                uptime=format_duration(time.time() - start_time),
+                done=stats.tasks_done,
+                pending=counts["pending"],
+                running=counts["running"],
+                deferred=counts["deferred"],
+                rate=0.0,
+            )
+        )
 
         while True:
             if max_tasks is not None and stats.tasks_processed >= max_tasks:
@@ -205,6 +240,7 @@ def run_worker(
             )
 
             try:
+                task_start = time.time()
                 points = clob.prices_history(
                     token_id=task["clob_token_id"],
                     start_ts=task["start_ts"],
@@ -227,6 +263,14 @@ def run_worker(
                     stats.tasks_error,
                     stats.prices_inserted + inserted,
                 )
+                print(
+                    "[worker] task_done id={task_id} token={token} rows={rows} dt={dt:.2f}s".format(
+                        task_id=task["task_pk"],
+                        token=task["clob_token_id"],
+                        rows=inserted,
+                        dt=time.time() - task_start,
+                    )
+                )
                 with conn:
                     _update_heartbeat(conn, now_ts, stats)
             except HttpError as exc:
@@ -245,6 +289,14 @@ def run_worker(
                         stats.tasks_error,
                         stats.prices_inserted,
                     )
+                    sleep_seconds = max(0, next_run_at - now_ts)
+                    print(
+                        "[worker] task_defer id={task_id} reason={reason} sleep={sleep:.2f}s".format(
+                            task_id=task["task_pk"],
+                            reason=exc.status_code,
+                            sleep=float(sleep_seconds),
+                        )
+                    )
                     with conn:
                         _update_heartbeat(conn, now_ts, stats)
                 elif exc.retriable:
@@ -258,6 +310,15 @@ def run_worker(
                         stats.tasks_error,
                         stats.prices_inserted,
                     )
+                    sleep_seconds = max(0, next_run_at - now_ts)
+                    reason = exc.status_code if exc.status_code else exc.message
+                    print(
+                        "[worker] task_defer id={task_id} reason={reason} sleep={sleep:.2f}s".format(
+                            task_id=task["task_pk"],
+                            reason=reason,
+                            sleep=float(sleep_seconds),
+                        )
+                    )
                     with conn:
                         _update_heartbeat(conn, now_ts, stats)
                 else:
@@ -270,9 +331,32 @@ def run_worker(
                         stats.tasks_error + 1,
                         stats.prices_inserted,
                     )
+                    reason = exc.status_code if exc.status_code else exc.message
+                    print(
+                        "[worker] task_fail id={task_id} reason={reason}".format(
+                            task_id=task["task_pk"],
+                            reason=reason,
+                        )
+                    )
                     with conn:
                         _update_heartbeat(conn, now_ts, stats)
             _sleep_between_tasks(no_sleep, no_jitter)
+            now_time = time.time()
+            if now_time - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
+                with conn:
+                    counts = _task_status_counts(conn)
+                rate = (stats.tasks_done / max(1e-6, (now_time - start_time))) * 60.0
+                print(
+                    "[worker] heartbeat uptime={uptime} done={done} pending={pending} running={running} deferred={deferred} rate={rate:.2f}task/min".format(
+                        uptime=format_duration(now_time - start_time),
+                        done=stats.tasks_done,
+                        pending=counts["pending"],
+                        running=counts["running"],
+                        deferred=counts["deferred"],
+                        rate=rate,
+                    )
+                )
+                last_heartbeat = now_time
     finally:
         conn.close()
 

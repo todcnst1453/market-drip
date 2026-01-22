@@ -7,6 +7,7 @@ from typing import Any
 
 from .clients.gamma import DEFAULT_GAMMA_BASE_URL, GammaClient, GammaMarket
 from .db.db import connect
+from .utils.progress import SlidingWindow, format_duration
 
 SECONDS_14_DAYS = 14 * 24 * 60 * 60
 SECONDS_30_DAYS = 30 * 24 * 60 * 60
@@ -85,10 +86,14 @@ def sync_markets(
     gamma = GammaClient(base_url=base_url or DEFAULT_GAMMA_BASE_URL)
     offset = 0
     page = 0
+    total_items = 0
+    window = SlidingWindow(10)
+    start_time = time.time()
 
     conn = connect(db_path)
     try:
         while True:
+            page_start = time.time()
             markets = gamma.list_markets(limit=limit, offset=offset, **(gamma_filters or {}))
             if not markets:
                 break
@@ -103,6 +108,27 @@ def sync_markets(
                         _upsert_token(conn, market_pk, outcome_name, token_id, short_cycle, now_ts)
 
             page += 1
+            total_items += len(markets)
+            page_elapsed = time.time() - page_start
+            window.add(page_elapsed)
+            avg = window.average() or 0.0
+            elapsed = format_duration(time.time() - start_time)
+            if max_pages is not None:
+                remaining_pages = max_pages - page
+                eta_seconds = max(0.0, remaining_pages * avg)
+                eta = format_duration(eta_seconds)
+            else:
+                eta = "unknown"
+            print(
+                "[sync-markets] page={page} page_items={items} total_items={total} avg={avg:.2f}s/page elapsed={elapsed} eta={eta}".format(
+                    page=page,
+                    items=len(markets),
+                    total=total_items,
+                    avg=avg,
+                    elapsed=elapsed,
+                    eta=eta,
+                )
+            )
             if max_pages is not None and page >= max_pages:
                 break
             if len(markets) < limit:

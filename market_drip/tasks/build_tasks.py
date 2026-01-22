@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import time
+
 from ..db.db import connect
+from ..utils.progress import format_duration
 
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 60 * 60
@@ -42,6 +45,9 @@ def build_tasks(
     close_end_hours: int = 1,
     res1_chunk_hours: int = 2,
 ) -> BuildStats:
+    start_time = time.time()
+    print("[build-tasks] start")
+
     rolling_seconds = rolling_days * SECONDS_PER_DAY
     res15_chunk_seconds = res15_chunk_days * SECONDS_PER_DAY
     close_start_seconds = close_start_hours * SECONDS_PER_HOUR
@@ -54,9 +60,15 @@ def build_tasks(
 
     inserted_15m = 0
     inserted_1m = 0
+    attempted_15m = 0
+    attempted_1m = 0
 
     conn = connect(db_path)
     try:
+        markets_count = conn.execute("SELECT COUNT(*) FROM markets").fetchone()[0]
+        tokens_count = conn.execute("SELECT COUNT(*) FROM tokens").fetchone()[0]
+        print(f"[build-tasks] scanned markets={markets_count} tokens={tokens_count}")
+
         rows = conn.execute(
             """
             SELECT tokens.token_pk, tokens.is_short_cycle, markets.end_ts
@@ -68,6 +80,7 @@ def build_tasks(
         with conn:
             for token_pk, is_short_cycle, end_ts in rows:
                 for start_ts, end_ts_chunk in window_chunks:
+                    attempted_15m += 1
                     cur = conn.execute(
                         """
                         INSERT OR IGNORE INTO fetch_tasks (
@@ -86,6 +99,7 @@ def build_tasks(
                 close_chunks = _iter_chunks(close_start, close_end, res1_chunk_seconds)
 
                 for start_ts, end_ts_chunk in close_chunks:
+                    attempted_1m += 1
                     cur = conn.execute(
                         """
                         INSERT OR IGNORE INTO fetch_tasks (
@@ -97,5 +111,11 @@ def build_tasks(
                     inserted_1m += cur.rowcount
     finally:
         conn.close()
+
+    inserted_total = inserted_15m + inserted_1m
+    attempted_total = attempted_15m + attempted_1m
+    skipped_existing = max(0, attempted_total - inserted_total)
+    print("[build-tasks] inserted={ins} skipped_existing={skip}".format(ins=inserted_total, skip=skipped_existing))
+    print("[build-tasks] done elapsed={elapsed}".format(elapsed=format_duration(time.time() - start_time)))
 
     return BuildStats(inserted_15m=inserted_15m, inserted_1m=inserted_1m)
