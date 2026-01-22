@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 from typing import Callable, Sequence
 
 from .db.db import init_db
 from .sync import sync_markets
+from .tasks.build_tasks import build_tasks
 
 
 def _not_implemented(_: argparse.Namespace) -> int:
@@ -29,6 +31,27 @@ def _sync_markets(args: argparse.Namespace) -> int:
         max_pages=args.max_pages,
     )
     print(f"Synced markets into {args.db}")
+    return 0
+
+
+def _build_tasks(args: argparse.Namespace) -> int:
+    now_ts = args.now_ts if args.now_ts is not None else int(time.time())
+    stats = build_tasks(
+        db_path=args.db,
+        now_ts=now_ts,
+        rolling_days=args.rolling_days,
+        res15_chunk_days=args.res15_chunk_days,
+        close_start_hours=args.close_start_hours,
+        close_end_hours=args.close_end_hours,
+        res1_chunk_hours=args.res1_chunk_hours,
+    )
+    print(
+        "Build tasks complete: total={total}, 15m={m15}, 1m={m1}".format(
+            total=stats.total_inserted,
+            m15=stats.inserted_15m,
+            m1=stats.inserted_1m,
+        )
+    )
     return 0
 
 
@@ -74,7 +97,26 @@ def build_parser() -> argparse.ArgumentParser:
         _sync_markets,
         _sync_markets_args,
     )
-    _add_subcommand(subparsers, "build-tasks", "Build ingestion tasks", _not_implemented)
+    def _build_tasks_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+        p.add_argument("--now-ts", type=int, default=None, help="Override current epoch seconds")
+        p.add_argument("--rolling-days", type=int, default=30, help="Rolling window days")
+        p.add_argument("--res15-chunk-days", type=int, default=7, help="Chunk size in days")
+        p.add_argument("--close-start-hours", type=int, default=6, help="Hours before end_ts")
+        p.add_argument("--close-end-hours", type=int, default=1, help="Hours after end_ts")
+        p.add_argument("--res1-chunk-hours", type=int, default=2, help="Chunk size in hours")
+
+    _add_subcommand(
+        subparsers,
+        "build-tasks",
+        "Build ingestion tasks",
+        _build_tasks,
+        _build_tasks_args,
+    )
     _add_subcommand(subparsers, "run", "Run the worker", _not_implemented)
     _add_subcommand(subparsers, "status", "Show status", _not_implemented)
     _add_subcommand(subparsers, "db-checkpoint", "Checkpoint the database", _not_implemented)

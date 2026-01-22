@@ -19,7 +19,6 @@ def test_cli_help() -> None:
 
 def test_cli_subcommands_exist() -> None:
     commands = [
-        "build-tasks",
         "run",
         "status",
         "db-checkpoint",
@@ -43,6 +42,24 @@ def test_cli_subcommands_exist() -> None:
         )
         assert result.returncode == 0
         assert "Initialized database at" in result.stdout
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "market_drip",
+                "build-tasks",
+                "--db",
+                f"{tmp_dir}/test.sqlite",
+                "--now-ts",
+                "1700000000",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0
+        assert "Build tasks complete" in result.stdout
 
     for command in commands:
         result = subprocess.run(
