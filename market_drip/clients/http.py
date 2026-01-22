@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
+import time
 from typing import Any, Optional
 
 import httpx
@@ -46,27 +48,41 @@ def _snippet(text: str, limit: int = 200) -> str:
 class HttpClient:
     def __init__(self, timeout_seconds: float = 10.0, client: httpx.Client | None = None) -> None:
         if client is None:
-            timeout = httpx.Timeout(timeout_seconds, connect=timeout_seconds, read=timeout_seconds)
+            timeout = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
             client = httpx.Client(timeout=timeout)
         self._client = client
+        self._rand = random.Random(0)
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:
-        try:
-            response = self._client.get(url, params=params)
-        except httpx.TimeoutException as exc:
-            raise HttpError(
-                status_code=0,
-                url=url,
-                message="timeout",
-                retriable=True,
-            ) from exc
-        except httpx.RequestError as exc:
-            raise HttpError(
+        max_attempts = 5
+        last_error: HttpError | None = None
+
+        response = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self._client.get(url, params=params)
+                break
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.NetworkError) as exc:
+                last_error = HttpError(
+                    status_code=0,
+                    url=url,
+                    message="request error",
+                    retriable=True,
+                )
+                if attempt >= max_attempts:
+                    raise last_error from exc
+                base = min(15.0, 0.5 * (2 ** (attempt - 1)))
+                jitter = 1.0 + (self._rand.random() * 0.2 - 0.1)
+                time.sleep(base * jitter)
+                continue
+
+        if response is None:
+            raise last_error if last_error is not None else HttpError(
                 status_code=0,
                 url=url,
                 message="request error",
                 retriable=True,
-            ) from exc
+            )
 
         if response.status_code < 200 or response.status_code >= 300:
             retry_after = None

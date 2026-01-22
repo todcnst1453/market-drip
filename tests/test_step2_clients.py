@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from market_drip.clients.clob import ClobClient
@@ -130,6 +131,20 @@ def test_http_5xx_raises_retriable(httpx_mock) -> None:
     err = exc_info.value
     assert err.status_code == 503
     assert err.retriable is True
+
+
+def test_http_retries_on_read_timeout_then_succeeds(httpx_mock, monkeypatch) -> None:
+    base_url = "https://example.com/timeout"
+    httpx_mock.add_exception(method="GET", url=base_url, exception=httpx.ReadTimeout("timeout"))
+    httpx_mock.add_response(method="GET", url=base_url, json={"ok": True}, status_code=200)
+
+    monkeypatch.setattr("market_drip.clients.http.time.sleep", lambda _: None)
+
+    client = HttpClient()
+    result = client.get_json(base_url)
+
+    assert result == {"ok": True}
+    assert len(httpx_mock.get_requests()) == 2
 
 
 def test_clob_requires_window_or_interval(httpx_mock) -> None:
