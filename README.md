@@ -107,3 +107,16 @@ Interfaces and internal details may evolve, but the core philosophy—
 
 This project is provided for research and educational purposes only.  
 It makes no guarantees regarding data accuracy, completeness, or fitness for any particular use.
+
+---
+
+## Runbook
+
+Typical flow:
+
+```
+python -m market_drip sync-markets --db <path>
+python -m market_drip sync-tokens --db <path> --limit 1000
+python -m market_drip build-tasks --db <path>
+python -m market_drip run --db <path>
+```

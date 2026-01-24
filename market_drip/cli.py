@@ -9,6 +9,7 @@ from typing import Callable, Sequence
 
 from .db.db import init_db
 from .sync import sync_markets
+from .sync_tokens import sync_tokens
 from .tasks.build_tasks import build_tasks
 from .worker.run_worker import run_worker
 from .status import get_status
@@ -54,6 +55,19 @@ def _build_tasks(args: argparse.Namespace) -> int:
             m15=stats.inserted_15m,
             m1=stats.inserted_1m,
         )
+    )
+    return 0
+
+
+def _sync_tokens(args: argparse.Namespace) -> int:
+    sync_tokens(
+        db_path=args.db,
+        limit=args.limit,
+        offset=args.offset,
+        rolling_days=args.rolling_days,
+        statuses=args.status,
+        concurrency=args.concurrency,
+        max_attempts=args.max_attempts,
     )
     return 0
 
@@ -162,6 +176,31 @@ def build_parser() -> argparse.ArgumentParser:
         "Sync market metadata",
         _sync_markets,
         _sync_markets_args,
+    )
+    def _sync_tokens_args(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--db",
+            default=str(Path("./market-drip.sqlite")),
+            help="Path to the SQLite database file",
+        )
+        p.add_argument("--limit", type=int, default=1000, help="Limit number of markets to process")
+        p.add_argument("--offset", type=int, default=0, help="Offset for market selection")
+        p.add_argument("--rolling-days", type=int, default=90, help="Select markets within rolling days")
+        p.add_argument(
+            "--status",
+            action="append",
+            default=None,
+            help="Market status filter (repeatable)",
+        )
+        p.add_argument("--concurrency", type=int, default=10, help="Concurrent HTTP fetches")
+        p.add_argument("--max-attempts", type=int, default=5, help="Max attempts per market")
+
+    _add_subcommand(
+        subparsers,
+        "sync-tokens",
+        "Sync token metadata from Gamma detail endpoint",
+        _sync_tokens,
+        _sync_tokens_args,
     )
     def _build_tasks_args(p: argparse.ArgumentParser) -> None:
         p.add_argument(

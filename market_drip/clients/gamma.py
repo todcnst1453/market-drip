@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from .http import HttpClient
+from .http import HttpClient, HttpError
 
 DEFAULT_GAMMA_BASE_URL = "https://gamma-api.polymarket.com"
 
@@ -18,6 +18,17 @@ class GammaMarket:
     status: str
     end_ts: int | None
     outcomes: list[tuple[str, str]]
+
+
+@dataclass
+class GammaHttpError(Exception):
+    status_code: int
+    message: str
+    url: str
+    retry_after_seconds: int | None = None
+
+    def __str__(self) -> str:
+        return f"{self.status_code} {self.message} ({self.url})"
 
 
 def _parse_int(value: Any) -> int | None:
@@ -108,9 +119,30 @@ class GammaClient:
         self._base_url = base_url.rstrip("/")
         self._http = http or HttpClient()
 
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
     def list_markets(self, limit: int = 100, offset: int = 0, **filters: Any) -> list[GammaMarket]:
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         params.update(filters)
         url = f"{self._base_url}/markets"
         data = self._http.get_json(url, params=params)
         return _parse_markets(data)
+
+    def get_market_detail(self, market_id: str) -> dict[str, Any]:
+        url = f"{self._base_url}/markets/{market_id}"
+        try:
+            data = self._http.get_json(url)
+        except HttpError as exc:
+            if exc.status_code and (exc.status_code < 200 or exc.status_code >= 300):
+                raise GammaHttpError(
+                    status_code=exc.status_code,
+                    message=exc.message,
+                    url=str(exc.url),
+                    retry_after_seconds=exc.retry_after_seconds,
+                ) from exc
+            raise
+        if not isinstance(data, dict):
+            return {}
+        return data
