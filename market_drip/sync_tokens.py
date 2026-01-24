@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import threading
@@ -72,10 +73,22 @@ def _get_nested_dict(data: dict[str, Any], key: str) -> dict[str, Any] | None:
     return None
 
 
-def _coalesce_list(data: dict[str, Any], key: str) -> list[Any] | None:
-    value = data.get(key)
-    if isinstance(value, list):
-        return value
+def _coalesce_list(data: dict[str, Any], *keys: str) -> list[Any] | None:
+    for key in keys:
+        if key not in data:
+            continue
+        value = data.get(key)
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = json.loads(text)
+                except Exception:
+                    continue
+                if isinstance(parsed, list):
+                    return parsed
     return None
 
 
@@ -133,9 +146,19 @@ def _extract_outcome_pairs(data: dict[str, Any]) -> list[tuple[str, str]]:
                 return pairs
 
         if all(isinstance(item, str) for item in outcomes):
-            token_ids = _extract_token_ids(data)
-            if token_ids and len(token_ids) == len(outcomes):
-                return [(str(name), str(token_id)) for name, token_id in zip(outcomes, token_ids)]
+            clob_ids = _coalesce_list(data, "clobTokenIds", "clob_token_ids")
+            if clob_ids is None:
+                clob_ids = _coalesce_list(
+                    _get_nested_dict(data, "market") or _get_nested_dict(data, "result") or {},
+                    "clobTokenIds",
+                    "clob_token_ids",
+                )
+            token_ids = clob_ids or _extract_token_ids(data)
+            if token_ids:
+                pairs = []
+                for name, token_id in zip(outcomes, token_ids):
+                    pairs.append((str(name).strip(), str(token_id).strip()))
+                return pairs
 
     return pairs
 

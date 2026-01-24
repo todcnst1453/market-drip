@@ -57,6 +57,15 @@ def test_extract_outcome_pairs_strings_with_token_ids() -> None:
     assert pairs == [("Yes", "t-yes"), ("No", "t-no")]
 
 
+def test_extract_outcome_pairs_json_string_arrays() -> None:
+    data = {
+        "outcomes": '["Yes", "No"]',
+        "clobTokenIds": '["1", "2"]',
+    }
+    pairs = _extract_outcome_pairs(data)
+    assert pairs == [("Yes", "1"), ("No", "2")]
+
+
 def test_extract_outcome_pairs_missing_outcomes() -> None:
     assert _extract_outcome_pairs({}) == []
     assert _extract_outcome_pairs({"outcomes": []}) == []
