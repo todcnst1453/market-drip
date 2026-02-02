@@ -5,7 +5,9 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
+venv/
 .venv*/
+venv*/
 .env
 .env.*
 logs/
@@ -18,11 +20,13 @@ data/
 logs/
 temp/
 tmp/
+build/
+scripts/
+
 
 # --- Prompt Engineering & Tooling ---
 # Allow Gemini to read your prompts, but keep these clean
 prompts/
-*.sh
 
 # Optional: Ignore specific prompt output logs if you generate them
 prompts/outputs/
