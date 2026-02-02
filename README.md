@@ -120,3 +120,9 @@ python -m market_drip sync-tokens --db <path> --limit 1000
 python -m market_drip build-tasks --db <path>
 python -m market_drip run --db <path>
 ```
+
+---
+
+## AI Integration
+
+This project is managed by the Gemini CLI.
