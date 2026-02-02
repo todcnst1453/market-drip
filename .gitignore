@@ -13,3 +13,21 @@ logs/
 .idea/
 .vscode/
 market-drip.sqlite
+.git/
+data/
+logs/
+temp/
+tmp/
+
+# --- Prompt Engineering & Tooling ---
+# Allow Gemini to read your prompts, but keep these clean
+prompts/
+*.sh
+
+# Optional: Ignore specific prompt output logs if you generate them
+prompts/outputs/
+
+# --- Protect AI Configuration ---
+# Prevent Gemini from modifying its own rules and project constitution
+GEMINI.md
+.geminiignore
